@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback,  } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getUser, clearAuth, registerCreator } from '../../services/authService';
 import {
@@ -34,10 +34,10 @@ function fmt(n: number) { return `₹${n.toLocaleString('en-IN')}`; }
 function fmtDate(d: string) {
   return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 }
-function formatBytes(b: number) {
-  if (b < 1048576) return `${(b / 1024).toFixed(0)} KB`;
-  return `${(b / 1048576).toFixed(1)} MB`;
-}
+// function formatBytes(b: number) {
+//   if (b < 1048576) return `${(b / 1024).toFixed(0)} KB`;
+//   return `${(b / 1048576).toFixed(1)} MB`;
+// }
 
 // ─── Tiny helper components ───────────────────────────────────────────────────
 function SectionHeader({ title, icon }: { title: string; icon: string }) {

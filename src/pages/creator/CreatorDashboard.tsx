@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import  { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getUser, clearAuth } from '../../services/authService';
 import { getCreatorEvents, creatorUpload, submitOtp } from '../../services/creatorService';
