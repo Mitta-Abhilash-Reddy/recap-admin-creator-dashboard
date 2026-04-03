@@ -15,7 +15,7 @@ async function apiFetch(path: string, options: RequestInit = {}) {
 }
 
 // ─── Clients ──────────────────────────────────────────────────────────────────
-export async function createClient(data: { name: string; phone: string; email?: string }) {
+export async function createClient(data: { name: string; phone: string }) {
   return apiFetch('/admin/client', { method: 'POST', body: JSON.stringify(data) });
 }
 
@@ -31,6 +31,11 @@ export async function createEvent(data: {
   date: string;
   status?: string;
   totalAmount?: number;
+  startTime?: string;
+  endTime?: string;
+  duration?: string;
+  poc?: { name: string; phone: string };
+  otp?: { startOtp: string; endOtp: string };
 }) {
   return apiFetch('/admin/event', { method: 'POST', body: JSON.stringify(data) });
 }
@@ -41,6 +46,19 @@ export async function deleteEvent(id: string) {
 
 export async function getAdminEvents() {
   return apiFetch('/admin/events');
+}
+
+// ─── Event Details (description, music, location) ────────────────────────────
+export async function updateEventDetails(eventId: string, data: {
+  description?: string;
+  musicPreferences?: string;
+  locationLink?: string;
+  clientPoc?: { name: string; phone: string };
+}) {
+  return apiFetch(`/event-details/${eventId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
 }
 
 // ─── Payments ─────────────────────────────────────────────────────────────────
@@ -91,11 +109,8 @@ export async function uploadFile(
     };
 
     xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) {
-        resolve(JSON.parse(xhr.responseText));
-      } else {
-        reject(new Error(JSON.parse(xhr.responseText)?.error || 'Upload failed'));
-      }
+      if (xhr.status >= 200 && xhr.status < 300) resolve(JSON.parse(xhr.responseText));
+      else reject(new Error(JSON.parse(xhr.responseText)?.error || 'Upload failed'));
     };
     xhr.onerror = () => reject(new Error('Network error'));
     xhr.send(formData);
@@ -104,4 +119,9 @@ export async function uploadFile(
 
 export async function deleteFile(id: string) {
   return apiFetch(`/admin/file/${id}`, { method: 'DELETE' });
+}
+
+// ─── Dashboard (for client detail view in admin) ─────────────────────────────
+export async function getClientDashboard(uniqueLinkId: string) {
+  return apiFetch(`/p/${uniqueLinkId}`);
 }

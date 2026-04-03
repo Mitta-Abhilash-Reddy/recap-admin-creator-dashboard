@@ -11,7 +11,7 @@ export async function getCreatorEvents() {
 export async function creatorUpload(
   file: File,
   eventId: string,
-  fileType: 'picture' | 'raw',
+  fileType: 'reel' | 'picture' | 'raw',
   onProgress?: (pct: number) => void
 ): Promise<{ id: string; name: string; url: string; size: number; createdAt: string }> {
   return new Promise((resolve, reject) => {
@@ -23,7 +23,8 @@ export async function creatorUpload(
     const xhr = new XMLHttpRequest();
     xhr.open('POST', `${API_BASE}/creator/upload`);
 
-    const token = localStorage.getItem('rr_token');
+    // Use the correct token key (same as authService)
+    const token = localStorage.getItem('rr_admin_token');
     if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
 
     xhr.upload.onprogress = (e) => {
@@ -37,4 +38,25 @@ export async function creatorUpload(
     xhr.onerror = () => reject(new Error('Network error'));
     xhr.send(formData);
   });
+}
+
+// Submit OTP to track event start/end time
+export async function submitOtp(eventId: string, otpType: 'start' | 'end', otpValue: string) {
+  const res = await fetch(`${API_BASE}/creator/otp`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ eventId, otpType, otpValue }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'OTP failed' }));
+    throw new Error(err.error || 'OTP submission failed');
+  }
+  return res.json();
+}
+
+// Get dashboard data for a specific event's client link (for creator to view their event)
+export async function getEventDashboard(uniqueLinkId: string) {
+  const res = await fetch(`${API_BASE}/p/${uniqueLinkId}`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to fetch event dashboard');
+  return res.json();
 }
