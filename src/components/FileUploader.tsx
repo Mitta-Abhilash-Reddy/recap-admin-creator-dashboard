@@ -31,7 +31,7 @@ export default function FileUploader({ accept, onUpload, label = 'Upload Files',
   const processFiles = useCallback((files: FileList | File[]) => {
     const arr = Array.from(files);
     arr.forEach((file) => {
-      const id = Math.random().toString(36).slice(2);
+      // const id = Math.random().toString(36).slice(2);
       setTasks((prev) => [...prev, { file, progress: 0, status: 'uploading' }]);
 
       onUpload(
