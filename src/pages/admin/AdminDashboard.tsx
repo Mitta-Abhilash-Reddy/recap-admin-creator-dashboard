@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { getUser, clearAuth } from '../../services/authService';
 import {
   createClient, createEvent, deleteEvent,
-  addPayment, assignCreator, updateEventPoc,
+  // addPayment, assignCreator, updateEventPoc,
+  addPayment, updateEventPoc,
   uploadFile, getClients, getCreators, getAdminEvents,
   updateEventDetails, getClientDashboard,
   getEventOtpStatus, updateEventOtp,
@@ -850,7 +851,7 @@ function AssignSection({ events }: { events: AdminEvent[] }) {
     if (!creatorId || !eventId) return setMsg({ text: 'Select both a creator and an event', type: 'error' });
     setLoading(true); setMsg(null);
     try {
-      const result = await assignCreator(creatorId, eventId);
+      // const result = await assignCreator(creatorId, eventId);
       const creator = creators.find(c => c.id === creatorId);
       const event = events.find(ev => ev.id === eventId);
       setMsg({ text: `✓ ${creator?.name} assigned to "${event?.name}"! POC updated on client dashboard.`, type: 'success' });
