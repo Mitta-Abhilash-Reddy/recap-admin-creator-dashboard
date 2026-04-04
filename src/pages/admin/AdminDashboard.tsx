@@ -115,10 +115,12 @@ function ClientDetailModal({ client, onClose }: { client: Client; onClose: () =>
       .finally(() => setLoading(false));
   }, [client.uniqueLinkId]);
 
-  const host = window.location.hostname === 'localhost'
-    ? 'http://localhost:8080'
-    : `https://${window.location.hostname.replace('admin.', '')}`;
-  const link = `${host}/p/${client.uniqueLinkId}`;
+  // const host = window.location.hostname === 'localhost'
+  //   ? 'http://localhost:8080'
+  //   : `https://${window.location.hostname.replace('admin.', '')}`;
+  // const link = `${host}/p/${client.uniqueLinkId}`;
+  const CLIENT_BASE = import.meta.env.VITE_CLIENT_BASE_URL || 'http://localhost:8080';
+const link = `${CLIENT_BASE}/p/${client.uniqueLinkId}`;
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '20px 16px', overflowY: 'auto' }}
