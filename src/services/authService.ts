@@ -1,19 +1,18 @@
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:4000/api';
 
-// Use a namespaced key so client-dashboard tokens don't collide
 const TOKEN_KEY = 'rr_admin_token';
 const USER_KEY  = 'rr_admin_user';
 
 export interface LoginResponse {
   token: string;
-  user: { id: string; email: string; role: string; name: string };
+  user: { id: string; email: string; role: string; name: string; phone?: string };
 }
 
-export async function registerCreator(name: string, email: string, password: string) {
+export async function registerCreator(name: string, email: string, password: string, phone?: string) {
   const res = await fetch(`${API_BASE}/auth/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, email, password }),
+    body: JSON.stringify({ name, email, password, phone: phone || '' }),
   });
   if (!res.ok) {
     const err = await res.json();

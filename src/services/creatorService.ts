@@ -23,7 +23,6 @@ export async function creatorUpload(
     const xhr = new XMLHttpRequest();
     xhr.open('POST', `${API_BASE}/creator/upload`);
 
-    // Use the correct token key (same as authService)
     const token = localStorage.getItem('rr_admin_token');
     if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
 
@@ -40,7 +39,7 @@ export async function creatorUpload(
   });
 }
 
-// Submit OTP to track event start/end time
+// Submit OTP received from client — verifies and records actual event time
 export async function submitOtp(eventId: string, otpType: 'start' | 'end', otpValue: string) {
   const res = await fetch(`${API_BASE}/creator/otp`, {
     method: 'POST',
@@ -51,12 +50,19 @@ export async function submitOtp(eventId: string, otpType: 'start' | 'end', otpVa
     const err = await res.json().catch(() => ({ error: 'OTP failed' }));
     throw new Error(err.error || 'OTP submission failed');
   }
-  return res.json();
+  return res.json(); // returns { success, otpType, verifiedAt, message }
 }
 
-// Get dashboard data for a specific event's client link (for creator to view their event)
-export async function getEventDashboard(uniqueLinkId: string) {
-  const res = await fetch(`${API_BASE}/p/${uniqueLinkId}`, { headers: authHeaders() });
-  if (!res.ok) throw new Error('Failed to fetch event dashboard');
+// Get current OTP verification status for an event
+export async function getOtpStatus(eventId: string): Promise<{
+  startVerified: boolean;
+  endVerified: boolean;
+  actualStartTime: string | null;
+  actualEndTime: string | null;
+}> {
+  const res = await fetch(`${API_BASE}/creator/otp-status/${eventId}`, {
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to fetch OTP status');
   return res.json();
 }

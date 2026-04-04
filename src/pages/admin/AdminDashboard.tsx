@@ -1,19 +1,21 @@
-import React, { useState, useEffect, useCallback,  } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getUser, clearAuth, registerCreator } from '../../services/authService';
+import { getUser, clearAuth } from '../../services/authService';
 import {
   createClient, createEvent, deleteEvent,
-  addPayment, assignCreator, uploadFile,
-  getClients, getCreators, getAdminEvents,
+  addPayment, assignCreator, updateEventPoc,
+  uploadFile, getClients, getCreators, getAdminEvents,
   updateEventDetails, getClientDashboard,
+  getEventOtpStatus, updateEventOtp,
 } from '../../services/adminService';
+import { registerCreator } from '../../services/authService';
 import FileUploader from '../../components/FileUploader';
 import '../../styles/design-system.css';
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
 interface Client { id: string; name: string; phone: string; uniqueLinkId: string; createdAt?: string }
 interface AdminEvent { id: string; name: string; date: string; status: string; occasionType?: string; clientId?: string; clientName?: string; totalAmount?: number }
-interface Creator { id: string; name: string; email: string }
+interface Creator { id: string; name: string; email: string; phone: string }
 interface PaymentRecord { id: string; amount: number; method: string; status: string; createdAt: string }
 
 const NAV = [
@@ -34,12 +36,12 @@ function fmt(n: number) { return `₹${n.toLocaleString('en-IN')}`; }
 function fmtDate(d: string) {
   return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 }
-// function formatBytes(b: number) {
-//   if (b < 1048576) return `${(b / 1024).toFixed(0)} KB`;
-//   return `${(b / 1048576).toFixed(1)} MB`;
-// }
+function fmtDateTime(d: string | null) {
+  if (!d) return '—';
+  return new Date(d).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+}
 
-// ─── Tiny helper components ───────────────────────────────────────────────────
+// ─── Tiny helpers ─────────────────────────────────────────────────────────────
 function SectionHeader({ title, icon }: { title: string; icon: string }) {
   return (
     <div style={{ marginBottom: 20 }}>
@@ -55,49 +57,51 @@ function Alert({ msg, type }: { msg: string; type: 'error' | 'success' }) {
 function EmptyState({ label }: { label: string }) {
   return <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--text3)', fontSize: 13 }}>{label}</div>;
 }
-
-// ─── Search bar ──────────────────────────────────────────────────────────────
 function SearchBar({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
   return (
     <div style={{ position: 'relative', marginBottom: 14 }}>
       <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 14, pointerEvents: 'none' }}>🔍</span>
-      <input
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        placeholder={placeholder || 'Search…'}
-        style={{ paddingLeft: 36, height: 38 }}
-      />
+      <input value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder || 'Search…'} style={{ paddingLeft: 36, height: 38 }} />
     </div>
   );
 }
-
-// ─── Copy button with "Copied!" feedback ────────────────────────────────────
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   function handleCopy() {
-    navigator.clipboard.writeText(text).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
+    navigator.clipboard.writeText(text).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); });
   }
   return (
-    <button
-      className="rr-btn rr-btn-ghost rr-btn-sm"
-      onClick={handleCopy}
-      style={{
-        minWidth: 68,
-        background: copied ? 'var(--green-bg)' : undefined,
-        color: copied ? 'var(--green)' : undefined,
-        borderColor: copied ? 'rgba(34,197,94,0.35)' : undefined,
-        transition: 'all 0.2s',
-      }}
-    >
+    <button className="rr-btn rr-btn-ghost rr-btn-sm" onClick={handleCopy}
+      style={{ minWidth: 68, background: copied ? 'var(--green-bg)' : undefined, color: copied ? 'var(--green)' : undefined, borderColor: copied ? 'rgba(34,197,94,0.35)' : undefined, transition: 'all 0.2s' }}>
       {copied ? '✓ Copied' : 'Copy'}
     </button>
   );
 }
 
-// ─── Client Detail Modal ─────────────────────────────────────────────────────
+// ─── OTP Status Badge ─────────────────────────────────────────────────────────
+function OtpStatusBadge({ verified, time, label }: { verified: boolean; time: string | null; label: string }) {
+  return (
+    <div style={{
+      padding: '8px 12px',
+      background: verified ? 'rgba(34,197,94,0.08)' : 'rgba(239,68,68,0.06)',
+      border: `1px solid ${verified ? 'rgba(34,197,94,0.25)' : 'rgba(239,68,68,0.2)'}`,
+      borderRadius: 'var(--r-md)',
+      textAlign: 'center',
+    }}>
+      <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: verified ? 'var(--green)' : 'var(--red)', marginBottom: 4 }}>
+        {label}
+      </div>
+      <div style={{ fontSize: 11, fontWeight: 600, color: verified ? 'var(--green)' : 'var(--text3)' }}>
+        {verified ? '✓ Verified' : '⏳ Pending'}
+      </div>
+      {verified && time && (
+        <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2 }}>{fmtDateTime(time)}</div>
+      )}
+    </div>
+  );
+}
+
+// ─── Client Detail Modal ──────────────────────────────────────────────────────
 function ClientDetailModal({ client, onClose }: { client: Client; onClose: () => void }) {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -116,12 +120,9 @@ function ClientDetailModal({ client, onClose }: { client: Client; onClose: () =>
   const link = `${host}/p/${client.uniqueLinkId}`;
 
   return (
-    <div
-      style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '20px 16px', overflowY: 'auto' }}
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
-    >
+    <div style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '20px 16px', overflowY: 'auto' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div style={{ width: '100%', maxWidth: 640, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--r-xl)', padding: 24, marginTop: 20 }}>
-        {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
           <div>
             <h2 style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 18, color: 'var(--text)' }}>{client.name}</h2>
@@ -130,7 +131,6 @@ function ClientDetailModal({ client, onClose }: { client: Client; onClose: () =>
           <button className="rr-btn rr-btn-ghost rr-btn-sm" onClick={onClose}>✕ Close</button>
         </div>
 
-        {/* Link */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: 'var(--surface2)', borderRadius: 'var(--r-md)', marginBottom: 20, fontSize: 12, color: 'var(--text2)', wordBreak: 'break-all' }}>
           <span style={{ flex: 1 }}>{link}</span>
           <CopyButton text={link} />
@@ -141,7 +141,6 @@ function ClientDetailModal({ client, onClose }: { client: Client; onClose: () =>
 
         {data && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            {/* Events */}
             {(data.eventsFull || []).map((ev: any) => (
               <div key={ev.id} style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 'var(--r-lg)', padding: 16 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
@@ -151,8 +150,6 @@ function ClientDetailModal({ client, onClose }: { client: Client; onClose: () =>
                   </div>
                   <span className={`rr-badge ${STATUS_BADGE[ev.status] || 'rr-badge-purple'}`}>{ev.status}</span>
                 </div>
-
-                {/* OTPs */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
                   <div style={{ padding: '8px 12px', background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.2)', borderRadius: 'var(--r-md)', textAlign: 'center' }}>
                     <div style={{ fontSize: 10, color: 'var(--green)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Start OTP</div>
@@ -163,15 +160,12 @@ function ClientDetailModal({ client, onClose }: { client: Client; onClose: () =>
                     <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--red)', fontFamily: 'var(--font-display)' }}>{ev.otp?.endOtp || '—'}</div>
                   </div>
                 </div>
-
-                {/* POC */}
                 {ev.poc?.name && (
                   <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 8 }}>
-                    🎯 ROG Buddy: <span style={{ color: 'var(--accent2)', fontWeight: 600 }}>{ev.poc.name}</span> · {ev.poc.phone}
+                    🎯 ROG Buddy: <span style={{ color: 'var(--accent2)', fontWeight: 600 }}>{ev.poc.name}</span>
+                    {ev.poc.phone && <span> · 📞 {ev.poc.phone}</span>}
                   </div>
                 )}
-
-                {/* Payment summary */}
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 6, marginBottom: 10 }}>
                   {[
                     { label: 'Total', val: fmt(ev.payments?.total || 0), c: 'var(--text)' },
@@ -184,8 +178,6 @@ function ClientDetailModal({ client, onClose }: { client: Client; onClose: () =>
                     </div>
                   ))}
                 </div>
-
-                {/* Payment history */}
                 {(ev.payments?.history || []).length > 0 && (
                   <div style={{ marginTop: 6 }}>
                     <div style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Payment History</div>
@@ -197,16 +189,12 @@ function ClientDetailModal({ client, onClose }: { client: Client; onClose: () =>
                     ))}
                   </div>
                 )}
-
-                {/* Files count */}
                 <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text3)' }}>
                   📁 {ev.files?.reels?.length || 0} reels · {ev.files?.pictures?.length || 0} pictures · {ev.files?.raw?.length || 0} raw
                 </div>
               </div>
             ))}
-            {(!data.eventsFull || data.eventsFull.length === 0) && (
-              <EmptyState label="No events for this client yet" />
-            )}
+            {(!data.eventsFull || data.eventsFull.length === 0) && <EmptyState label="No events for this client yet" />}
           </div>
         )}
       </div>
@@ -214,7 +202,7 @@ function ClientDetailModal({ client, onClose }: { client: Client; onClose: () =>
   );
 }
 
-// ─── SECTION: Clients ────────────────────────────────────────────────────────
+// ─── SECTION: Clients ─────────────────────────────────────────────────────────
 function ClientsSection({ clients, setClients }: { clients: Client[]; setClients: React.Dispatch<React.SetStateAction<Client[]>> }) {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -248,18 +236,13 @@ function ClientsSection({ clients, setClients }: { clients: Client[]; setClients
   }
 
   const filtered = clients.filter(c =>
-    c.name.toLowerCase().includes(search.toLowerCase()) ||
-    c.phone.includes(search)
+    c.name.toLowerCase().includes(search.toLowerCase()) || c.phone.includes(search)
   );
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      {selectedClient && (
-        <ClientDetailModal client={selectedClient} onClose={() => setSelectedClient(null)} />
-      )}
-
+      {selectedClient && <ClientDetailModal client={selectedClient} onClose={() => setSelectedClient(null)} />}
       <SectionHeader title="Client Management" icon="👥" />
-
       <div className="rr-card">
         <div className="rr-card-title">➕ New Client</div>
         {msg && <Alert msg={msg.text} type={msg.type} />}
@@ -273,7 +256,6 @@ function ClientsSection({ clients, setClients }: { clients: Client[]; setClients
           </button>
         </form>
       </div>
-
       <div className="rr-card">
         <div className="rr-card-title">📋 All Clients ({clients.length})</div>
         <SearchBar value={search} onChange={setSearch} placeholder="Search by name or phone…" />
@@ -286,12 +268,9 @@ function ClientsSection({ clients, setClients }: { clients: Client[]; setClients
               return (
                 <div key={c.id} style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 'var(--r-lg)', padding: '12px 14px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <button
-                      onClick={() => setSelectedClient(c)}
-                      style={{ textAlign: 'left', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
-                    >
+                    <button onClick={() => setSelectedClient(c)} style={{ textAlign: 'left', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}>
                       <div style={{ fontWeight: 600, color: 'var(--accent2)', fontSize: 14 }}>{c.name}</div>
-                      <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 2 }}>{c.phone}</div>
+                      <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 2 }}>📞 {c.phone}</div>
                     </button>
                     <span className="rr-badge rr-badge-green">Active</span>
                   </div>
@@ -309,7 +288,7 @@ function ClientsSection({ clients, setClients }: { clients: Client[]; setClients
   );
 }
 
-// ─── SECTION: Events ─────────────────────────────────────────────────────────
+// ─── SECTION: Events ──────────────────────────────────────────────────────────
 const EVENT_FILTERS = ['ALL', 'UPCOMING', 'ONGOING', 'COMPLETED', 'CANCELLED'] as const;
 
 function EventsSection({ events, setEvents, clients }: {
@@ -324,6 +303,8 @@ function EventsSection({ events, setEvents, clients }: {
   const [totalAmount, setTotalAmount] = useState('');
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
+  const [startOtp, setStartOtp] = useState('');
+  const [endOtp, setEndOtp] = useState('');
   const [description, setDescription] = useState('');
   const [musicPrefs, setMusicPrefs] = useState('');
   const [locationLink, setLocationLink] = useState('');
@@ -341,6 +322,9 @@ function EventsSection({ events, setEvents, clients }: {
       .finally(() => setFetching(false));
   }, []);
 
+  // Generate random 4-digit OTP
+  function genOtp() { return String(Math.floor(1000 + Math.random() * 9000)); }
+
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     if (!clientId) return setMsg({ text: 'Select a client', type: 'error' });
@@ -351,12 +335,11 @@ function EventsSection({ events, setEvents, clients }: {
         totalAmount: Number(totalAmount) || 0,
         startTime: startTime || undefined,
         endTime: endTime || undefined,
+        otp: startOtp && endOtp ? { startOtp, endOtp } : undefined,
       });
       const client = clients.find(c => c.id === clientId);
-      const newEv = { ...ev, clientName: client?.name, clientId };
-      setEvents(prev => [newEv, ...prev]);
+      setEvents(prev => [{ ...ev, clientName: client?.name, clientId }, ...prev]);
 
-      // If optional fields filled, patch event_details
       if (description || musicPrefs || locationLink) {
         await updateEventDetails(ev.id, {
           description: description || undefined,
@@ -366,7 +349,8 @@ function EventsSection({ events, setEvents, clients }: {
       }
 
       setName(''); setDate(''); setOccasionType(''); setTotalAmount('');
-      setStartTime(''); setEndTime(''); setDescription(''); setMusicPrefs(''); setLocationLink('');
+      setStartTime(''); setEndTime(''); setStartOtp(''); setEndOtp('');
+      setDescription(''); setMusicPrefs(''); setLocationLink('');
       setMsg({ text: 'Event created!', type: 'success' });
     } catch (err: any) { setMsg({ text: err.message, type: 'error' }); }
     finally { setLoading(false); }
@@ -389,15 +373,11 @@ function EventsSection({ events, setEvents, clients }: {
   });
 
   const counts: Record<string, number> = {};
-  EVENT_FILTERS.forEach(f => {
-    counts[f] = f === 'ALL' ? events.length : events.filter(e => e.status === f).length;
-  });
+  EVENT_FILTERS.forEach(f => { counts[f] = f === 'ALL' ? events.length : events.filter(e => e.status === f).length; });
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <SectionHeader title="Event Management" icon="📅" />
-
-      {/* Create form */}
       <div className="rr-card">
         <div className="rr-card-title">➕ New Event</div>
         {msg && <Alert msg={msg.text} type={msg.type} />}
@@ -420,12 +400,33 @@ function EventsSection({ events, setEvents, clients }: {
             <div className="rr-field"><label>End Time</label><input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} /></div>
           </div>
 
-          {/* Optional fields toggle */}
-          <button
-            type="button"
-            onClick={() => setShowOptional(!showOptional)}
-            style={{ background: 'none', border: 'none', color: 'var(--accent2)', fontSize: 13, fontWeight: 600, cursor: 'pointer', textAlign: 'left', padding: 0 }}
-          >
+          {/* OTP Section */}
+          <div style={{ padding: '14px', background: 'var(--surface2)', borderRadius: 'var(--r-md)', border: '1px solid var(--border)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>🔑 Event OTPs</div>
+              <button type="button"
+                onClick={() => { setStartOtp(genOtp()); setEndOtp(genOtp()); }}
+                style={{ fontSize: 11, fontWeight: 600, color: 'var(--accent2)', background: 'var(--accent-bg)', border: '1px solid rgba(108,99,255,0.2)', borderRadius: 'var(--r-md)', padding: '4px 10px', cursor: 'pointer' }}>
+                ✨ Auto-generate
+              </button>
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 10 }}>
+              Client will see these OTPs on their dashboard. Creator enters them at event start/end.
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div className="rr-field">
+                <label style={{ color: 'var(--green)', fontWeight: 700 }}>Start OTP</label>
+                <input value={startOtp} onChange={e => setStartOtp(e.target.value)} placeholder="e.g. 4821" maxLength={8} style={{ textAlign: 'center', fontWeight: 700, fontSize: 18, letterSpacing: 4, borderColor: 'rgba(34,197,94,0.3)' }} />
+              </div>
+              <div className="rr-field">
+                <label style={{ color: 'var(--red)', fontWeight: 700 }}>End OTP</label>
+                <input value={endOtp} onChange={e => setEndOtp(e.target.value)} placeholder="e.g. 7364" maxLength={8} style={{ textAlign: 'center', fontWeight: 700, fontSize: 18, letterSpacing: 4, borderColor: 'rgba(239,68,68,0.3)' }} />
+              </div>
+            </div>
+          </div>
+
+          <button type="button" onClick={() => setShowOptional(!showOptional)}
+            style={{ background: 'none', border: 'none', color: 'var(--accent2)', fontSize: 13, fontWeight: 600, cursor: 'pointer', textAlign: 'left', padding: 0 }}>
             {showOptional ? '▲ Hide' : '▼ Show'} optional details (description, music, location)
           </button>
 
@@ -435,14 +436,8 @@ function EventsSection({ events, setEvents, clients }: {
                 <label>Description</label>
                 <textarea value={description} onChange={e => setDescription(e.target.value)} rows={2} placeholder="Event details, special notes…" style={{ resize: 'vertical' }} />
               </div>
-              <div className="rr-field">
-                <label>Music Preferences</label>
-                <input value={musicPrefs} onChange={e => setMusicPrefs(e.target.value)} placeholder="Bollywood, EDM, Classical…" />
-              </div>
-              <div className="rr-field">
-                <label>Location Link</label>
-                <input value={locationLink} onChange={e => setLocationLink(e.target.value)} placeholder="https://maps.google.com/…" />
-              </div>
+              <div className="rr-field"><label>Music Preferences</label><input value={musicPrefs} onChange={e => setMusicPrefs(e.target.value)} placeholder="Bollywood, EDM, Classical…" /></div>
+              <div className="rr-field"><label>Location Link</label><input value={locationLink} onChange={e => setLocationLink(e.target.value)} placeholder="https://maps.google.com/…" /></div>
             </div>
           )}
 
@@ -452,26 +447,17 @@ function EventsSection({ events, setEvents, clients }: {
         </form>
       </div>
 
-      {/* Filter + search */}
+      {/* Filter + event list */}
       <div className="rr-card">
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
           {EVENT_FILTERS.map(f => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              style={{
-                padding: '5px 14px', borderRadius: 999, border: `1px solid ${filter === f ? 'var(--accent)' : 'var(--border)'}`,
-                background: filter === f ? 'var(--accent-bg)' : 'var(--surface2)',
-                color: filter === f ? 'var(--accent2)' : 'var(--text2)',
-                fontSize: 12, fontWeight: filter === f ? 600 : 400, cursor: 'pointer',
-              }}
-            >
+            <button key={f} onClick={() => setFilter(f)}
+              style={{ padding: '5px 14px', borderRadius: 999, border: `1px solid ${filter === f ? 'var(--accent)' : 'var(--border)'}`, background: filter === f ? 'var(--accent-bg)' : 'var(--surface2)', color: filter === f ? 'var(--accent2)' : 'var(--text2)', fontSize: 12, fontWeight: filter === f ? 600 : 400, cursor: 'pointer' }}>
               {f} {counts[f] > 0 && <span style={{ opacity: 0.7 }}>({counts[f]})</span>}
             </button>
           ))}
         </div>
         <SearchBar value={search} onChange={setSearch} placeholder="Search events or clients…" />
-        <div className="rr-card-title" style={{ marginBottom: 10 }}>📋 Events ({filtered.length})</div>
         {fetching ? (
           <div style={{ textAlign: 'center', padding: 24 }}><span className="rr-spinner" style={{ color: 'var(--accent)' }} /></div>
         ) : filtered.length === 0 ? <EmptyState label="No events match" /> : (
@@ -502,14 +488,12 @@ function EventsSection({ events, setEvents, clients }: {
   );
 }
 
-// ─── SECTION: File Upload ────────────────────────────────────────────────────
+// ─── SECTION: Upload ──────────────────────────────────────────────────────────
 function UploadSection({ clients, events }: { clients: Client[]; events: AdminEvent[] }) {
   const [clientId, setClientId] = useState('');
   const [eventId, setEventId] = useState('');
   const [fileType, setFileType] = useState<'reel' | 'picture' | 'raw'>('reel');
-
   const filteredEvents = events.filter(e => !clientId || e.clientId === clientId);
-
   const handleUpload = useCallback(
     (file: File, onProgress: (p: number) => void) => {
       if (!clientId || !eventId) return Promise.reject(new Error('Select client and event first'));
@@ -517,7 +501,6 @@ function UploadSection({ clients, events }: { clients: Client[]; events: AdminEv
     },
     [clientId, eventId, fileType]
   );
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <SectionHeader title="File Upload" icon="📁" />
@@ -569,7 +552,7 @@ function UploadSection({ clients, events }: { clients: Client[]; events: AdminEv
   );
 }
 
-// ─── SECTION: Payments ───────────────────────────────────────────────────────
+// ─── SECTION: Payments ────────────────────────────────────────────────────────
 function PaymentsSection({ events }: { events: AdminEvent[] }) {
   const [eventId, setEventId] = useState('');
   const [amount, setAmount] = useState('');
@@ -665,7 +648,185 @@ function PaymentsSection({ events }: { events: AdminEvent[] }) {
   );
 }
 
-// ─── SECTION: Assign Creator ─────────────────────────────────────────────────
+// ─── POC Edit Modal ───────────────────────────────────────────────────────────
+function PocEditModal({ event, onClose, onSaved }: {
+  event: AdminEvent;
+  onClose: () => void;
+  onSaved: (poc: { name: string; phone: string }) => void;
+}) {
+  const [pocName, setPocName] = useState('');
+  const [pocPhone, setPocPhone] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [msg, setMsg] = useState<{ text: string; type: 'error' | 'success' } | null>(null);
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    if (!pocName.trim()) return setMsg({ text: 'POC name is required', type: 'error' });
+    setLoading(true); setMsg(null);
+    try {
+      await updateEventPoc(event.id, { name: pocName.trim(), phone: pocPhone.trim() });
+      setMsg({ text: 'POC updated! Client dashboard will now show new details.', type: 'success' });
+      onSaved({ name: pocName.trim(), phone: pocPhone.trim() });
+      setTimeout(onClose, 1200);
+    } catch (err: any) { setMsg({ text: err.message, type: 'error' }); }
+    finally { setLoading(false); }
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div style={{ width: '100%', maxWidth: 420, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--r-xl)', padding: 24 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <div>
+            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 16, color: 'var(--text)' }}>✏️ Change ROG Buddy</div>
+            <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 2 }}>{event.name}</div>
+          </div>
+          <button className="rr-btn rr-btn-ghost rr-btn-sm" onClick={onClose}>✕</button>
+        </div>
+        <div style={{ padding: '10px 12px', background: 'var(--accent-bg)', border: '1px solid rgba(108,99,255,0.2)', borderRadius: 'var(--r-md)', fontSize: 12, color: 'var(--accent2)', marginBottom: 16 }}>
+          💡 This will immediately update what the client sees on their dashboard.
+        </div>
+        {msg && <Alert msg={msg.text} type={msg.type} />}
+        <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div className="rr-field"><label>ROG Buddy Name</label><input value={pocName} onChange={e => setPocName(e.target.value)} placeholder="Ravi Kumar" required /></div>
+          <div className="rr-field"><label>Phone Number</label><input value={pocPhone} onChange={e => setPocPhone(e.target.value)} placeholder="+91 98765 43210" /></div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+            <button type="submit" className="rr-btn rr-btn-primary" disabled={loading} style={{ flex: 1 }}>
+              {loading ? <span className="rr-spinner" /> : '✓ Update POC'}
+            </button>
+            <button type="button" className="rr-btn rr-btn-ghost" onClick={onClose} style={{ flex: 1 }}>Cancel</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ─── OTP Management Modal ─────────────────────────────────────────────────────
+function OtpManageModal({ event, onClose }: { event: AdminEvent; onClose: () => void }) {
+  const [otpData, setOtpData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [newStart, setNewStart] = useState('');
+  const [newEnd, setNewEnd] = useState('');
+  const [msg, setMsg] = useState<{ text: string; type: 'error' | 'success' } | null>(null);
+  const [editMode, setEditMode] = useState(false);
+
+  useEffect(() => {
+    getEventOtpStatus(event.id)
+      .then(d => { setOtpData(d); setNewStart(d.startOtp); setNewEnd(d.endOtp); })
+      .catch(e => setMsg({ text: e.message, type: 'error' }))
+      .finally(() => setLoading(false));
+  }, [event.id]);
+
+  function genOtp() { return String(Math.floor(1000 + Math.random() * 9000)); }
+
+  async function handleUpdate(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newStart.trim() || !newEnd.trim()) return setMsg({ text: 'Both OTPs are required', type: 'error' });
+    setSaving(true); setMsg(null);
+    try {
+      await updateEventOtp(event.id, { startOtp: newStart.trim(), endOtp: newEnd.trim() });
+      setOtpData({ ...otpData, startOtp: newStart, endOtp: newEnd, startVerified: false, endVerified: false, actualStartTime: null, actualEndTime: null });
+      setMsg({ text: 'OTPs updated! Verification status has been reset.', type: 'success' });
+      setEditMode(false);
+    } catch (err: any) { setMsg({ text: err.message, type: 'error' }); }
+    finally { setSaving(false); }
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div style={{ width: '100%', maxWidth: 480, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--r-xl)', padding: 24 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <div>
+            <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 16, color: 'var(--text)' }}>🔑 OTP Management</div>
+            <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 2 }}>{event.name}</div>
+          </div>
+          <button className="rr-btn rr-btn-ghost rr-btn-sm" onClick={onClose}>✕</button>
+        </div>
+
+        {loading && <div style={{ textAlign: 'center', padding: 32 }}><span className="rr-spinner" style={{ color: 'var(--accent)' }} /></div>}
+        {msg && <Alert msg={msg.text} type={msg.type} />}
+
+        {otpData && !editMode && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {/* Current OTP values */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <div style={{ padding: '12px', background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.2)', borderRadius: 'var(--r-lg)', textAlign: 'center' }}>
+                <div style={{ fontSize: 10, color: 'var(--green)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>Start OTP</div>
+                <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--green)', fontFamily: 'var(--font-display)', letterSpacing: 4 }}>{otpData.startOtp || '—'}</div>
+              </div>
+              <div style={{ padding: '12px', background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 'var(--r-lg)', textAlign: 'center' }}>
+                <div style={{ fontSize: 10, color: 'var(--red)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>End OTP</div>
+                <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--red)', fontFamily: 'var(--font-display)', letterSpacing: 4 }}>{otpData.endOtp || '—'}</div>
+              </div>
+            </div>
+
+            {/* Verification status */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <OtpStatusBadge verified={otpData.startVerified} time={otpData.actualStartTime} label="Start Verified" />
+              <OtpStatusBadge verified={otpData.endVerified} time={otpData.actualEndTime} label="End Verified" />
+            </div>
+
+            {/* Actual times if verified */}
+            {(otpData.startVerified || otpData.endVerified) && (
+              <div style={{ padding: '10px 14px', background: 'var(--surface2)', borderRadius: 'var(--r-md)', border: '1px solid var(--border)', fontSize: 12 }}>
+                <div style={{ fontWeight: 600, color: 'var(--text)', marginBottom: 6 }}>⏱ Actual Event Times</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, color: 'var(--text2)' }}>
+                  <div>🟢 Started: <span style={{ fontWeight: 600, color: 'var(--green)' }}>{fmtDateTime(otpData.actualStartTime)}</span></div>
+                  <div>🔴 Ended: <span style={{ fontWeight: 600, color: otpData.actualEndTime ? 'var(--red)' : 'var(--text3)' }}>{fmtDateTime(otpData.actualEndTime)}</span></div>
+                  {otpData.actualStartTime && otpData.actualEndTime && (
+                    <div>⏱ Duration: <span style={{ fontWeight: 600, color: 'var(--accent2)' }}>
+                      {Math.round((new Date(otpData.actualEndTime).getTime() - new Date(otpData.actualStartTime).getTime()) / 60000)} minutes
+                    </span></div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <button className="rr-btn rr-btn-ghost" onClick={() => setEditMode(true)} style={{ width: '100%' }}>
+              ✏️ Update OTPs (will reset verification)
+            </button>
+          </div>
+        )}
+
+        {otpData && editMode && (
+          <form onSubmit={handleUpdate} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ padding: '10px 12px', background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 'var(--r-md)', fontSize: 12, color: 'var(--red)' }}>
+              ⚠️ Updating OTPs will reset the verification status for this event.
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button type="button"
+                onClick={() => { setNewStart(genOtp()); setNewEnd(genOtp()); }}
+                style={{ fontSize: 11, fontWeight: 600, color: 'var(--accent2)', background: 'var(--accent-bg)', border: '1px solid rgba(108,99,255,0.2)', borderRadius: 'var(--r-md)', padding: '4px 10px', cursor: 'pointer' }}>
+                ✨ Auto-generate
+              </button>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div className="rr-field">
+                <label style={{ color: 'var(--green)', fontWeight: 700 }}>New Start OTP</label>
+                <input value={newStart} onChange={e => setNewStart(e.target.value)} placeholder="e.g. 4821" maxLength={8} style={{ textAlign: 'center', fontWeight: 700, fontSize: 18, letterSpacing: 4, borderColor: 'rgba(34,197,94,0.3)' }} />
+              </div>
+              <div className="rr-field">
+                <label style={{ color: 'var(--red)', fontWeight: 700 }}>New End OTP</label>
+                <input value={newEnd} onChange={e => setNewEnd(e.target.value)} placeholder="e.g. 7364" maxLength={8} style={{ textAlign: 'center', fontWeight: 700, fontSize: 18, letterSpacing: 4, borderColor: 'rgba(239,68,68,0.3)' }} />
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+              <button type="submit" className="rr-btn rr-btn-primary" disabled={saving} style={{ flex: 1 }}>
+                {saving ? <span className="rr-spinner" /> : '✓ Save OTPs'}
+              </button>
+              <button type="button" className="rr-btn rr-btn-ghost" onClick={() => setEditMode(false)} style={{ flex: 1 }}>Cancel</button>
+            </div>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── SECTION: Assign Creator ──────────────────────────────────────────────────
 function AssignSection({ events }: { events: AdminEvent[] }) {
   const [creatorId, setCreatorId] = useState('');
   const [eventId, setEventId] = useState('');
@@ -674,6 +835,8 @@ function AssignSection({ events }: { events: AdminEvent[] }) {
   const [fetching, setFetching] = useState(true);
   const [msg, setMsg] = useState<{ text: string; type: 'error' | 'success' } | null>(null);
   const [search, setSearch] = useState('');
+  const [pocEditEvent, setPocEditEvent] = useState<AdminEvent | null>(null);
+  const [otpManageEvent, setOtpManageEvent] = useState<AdminEvent | null>(null);
 
   useEffect(() => {
     getCreators()
@@ -687,10 +850,10 @@ function AssignSection({ events }: { events: AdminEvent[] }) {
     if (!creatorId || !eventId) return setMsg({ text: 'Select both a creator and an event', type: 'error' });
     setLoading(true); setMsg(null);
     try {
-      await assignCreator(creatorId, eventId);
+      const result = await assignCreator(creatorId, eventId);
       const creator = creators.find(c => c.id === creatorId);
       const event = events.find(ev => ev.id === eventId);
-      setMsg({ text: `✓ ${creator?.name} assigned to "${event?.name}"! Client dashboard will now show their details.`, type: 'success' });
+      setMsg({ text: `✓ ${creator?.name} assigned to "${event?.name}"! POC updated on client dashboard.`, type: 'success' });
       setCreatorId(''); setEventId('');
     } catch (err: any) { setMsg({ text: err.message, type: 'error' }); }
     finally { setLoading(false); }
@@ -703,16 +866,18 @@ function AssignSection({ events }: { events: AdminEvent[] }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {pocEditEvent && <PocEditModal event={pocEditEvent} onClose={() => setPocEditEvent(null)} onSaved={() => {}} />}
+      {otpManageEvent && <OtpManageModal event={otpManageEvent} onClose={() => setOtpManageEvent(null)} />}
+
       <SectionHeader title="Assign Creator to Event" icon="🔗" />
 
+      {/* Assign form */}
       <div className="rr-card">
-        <div className="rr-card-title">👨‍💻 Assignment</div>
+        <div className="rr-card-title">👨‍💻 Assign Creator</div>
         {msg && <Alert msg={msg.text} type={msg.type} />}
-
         <div style={{ marginBottom: 12, padding: '10px 14px', background: 'var(--accent-bg)', border: '1px solid rgba(108,99,255,0.2)', borderRadius: 'var(--r-md)', fontSize: 12, color: 'var(--accent2)' }}>
-          💡 Assigning a creator will update the client dashboard to show their name and phone as the ROG Buddy.
+          💡 Assigning a creator automatically sets them as the ROG Buddy on the client's dashboard using their name and phone number.
         </div>
-
         <form onSubmit={handleAssign} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div className="rr-field">
             <label>Select Creator</label>
@@ -725,20 +890,14 @@ function AssignSection({ events }: { events: AdminEvent[] }) {
                   {filteredCreators.length === 0 ? (
                     <div style={{ fontSize: 12, color: 'var(--text3)', padding: '8px 0' }}>No creators found</div>
                   ) : filteredCreators.map(c => (
-                    <button
-                      key={c.id} type="button"
-                      onClick={() => setCreatorId(c.id)}
-                      style={{
-                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                        padding: '10px 14px', borderRadius: 'var(--r-md)',
-                        border: `1px solid ${creatorId === c.id ? 'var(--accent)' : 'var(--border)'}`,
-                        background: creatorId === c.id ? 'var(--accent-bg)' : 'var(--surface2)',
-                        cursor: 'pointer', textAlign: 'left',
-                      }}
-                    >
+                    <button key={c.id} type="button" onClick={() => setCreatorId(c.id)}
+                      style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', borderRadius: 'var(--r-md)', border: `1px solid ${creatorId === c.id ? 'var(--accent)' : 'var(--border)'}`, background: creatorId === c.id ? 'var(--accent-bg)' : 'var(--surface2)', cursor: 'pointer', textAlign: 'left' }}>
                       <div>
                         <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text)' }}>{c.name}</div>
-                        <div style={{ fontSize: 11, color: 'var(--text3)' }}>{c.email}</div>
+                        <div style={{ fontSize: 11, color: 'var(--text3)' }}>
+                          {c.email}
+                          {c.phone && <span style={{ marginLeft: 8 }}>· 📞 {c.phone}</span>}
+                        </div>
                       </div>
                       {creatorId === c.id && <span style={{ color: 'var(--accent)', fontSize: 16 }}>✓</span>}
                     </button>
@@ -747,37 +906,67 @@ function AssignSection({ events }: { events: AdminEvent[] }) {
               </>
             )}
           </div>
-
           <div className="rr-field">
             <label>Select Event</label>
             <select value={eventId} onChange={e => setEventId(e.target.value)} required>
               <option value="">Select event…</option>
               {events.map(e => (
-                <option key={e.id} value={e.id}>
-                  {e.name}{e.clientName ? ` — ${e.clientName}` : ''}
-                </option>
+                <option key={e.id} value={e.id}>{e.name}{e.clientName ? ` — ${e.clientName}` : ''}</option>
               ))}
             </select>
           </div>
-
-          <button
-            type="submit"
-            className="rr-btn rr-btn-primary"
-            disabled={loading || fetching || !creatorId || !eventId}
-            style={{ alignSelf: 'flex-start' }}
-          >
+          <button type="submit" className="rr-btn rr-btn-primary" disabled={loading || fetching || !creatorId || !eventId} style={{ alignSelf: 'flex-start' }}>
             {loading ? <span className="rr-spinner" /> : '✓ Assign Creator'}
           </button>
         </form>
+      </div>
+
+      {/* Per-event management: change POC + manage OTPs */}
+      <div className="rr-card">
+        <div className="rr-card-title">⚙️ Per-Event Management</div>
+        <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 14 }}>
+          Change POC or manage OTPs for any event independently.
+        </div>
+        {events.length === 0 ? <EmptyState label="No events yet" /> : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {events.map(ev => (
+              <div key={ev.id} style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 'var(--r-lg)', padding: '12px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ev.name}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
+                    {ev.clientName && <span>👤 {ev.clientName} · </span>}
+                    <span>📅 {fmtDate(ev.date)}</span>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                  <span className={`rr-badge ${STATUS_BADGE[ev.status] || 'rr-badge-purple'}`} style={{ fontSize: 10 }}>{ev.status}</span>
+                  <button
+                    className="rr-btn rr-btn-ghost rr-btn-sm"
+                    onClick={() => setPocEditEvent(ev)}
+                    title="Change ROG Buddy">
+                    👤 POC
+                  </button>
+                  <button
+                    className="rr-btn rr-btn-ghost rr-btn-sm"
+                    onClick={() => setOtpManageEvent(ev)}
+                    title="Manage OTPs">
+                    🔑 OTP
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-// ─── SECTION: Creators ───────────────────────────────────────────────────────
+// ─── SECTION: Creators ────────────────────────────────────────────────────────
 function CreatorsSection() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
@@ -796,9 +985,9 @@ function CreatorsSection() {
     e.preventDefault();
     setLoading(true); setMsg(null);
     try {
-      const c = await registerCreator(name, email, password);
+      const c = await registerCreator(name, email, password, phone);
       setCreators(prev => [c, ...prev]);
-      setName(''); setEmail(''); setPassword('');
+      setName(''); setEmail(''); setPhone(''); setPassword('');
       setMsg({ text: `Creator "${c.name}" registered!`, type: 'success' });
     } catch (err: any) { setMsg({ text: err.message, type: 'error' }); }
     finally { setLoading(false); }
@@ -806,7 +995,8 @@ function CreatorsSection() {
 
   const filtered = creators.filter(c =>
     c.name.toLowerCase().includes(search.toLowerCase()) ||
-    c.email.toLowerCase().includes(search.toLowerCase())
+    c.email.toLowerCase().includes(search.toLowerCase()) ||
+    (c.phone || '').includes(search)
   );
 
   return (
@@ -819,8 +1009,9 @@ function CreatorsSection() {
           <div className="rr-field"><label>Name</label><input value={name} onChange={e => setName(e.target.value)} placeholder="Ravi Kumar" required /></div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div className="rr-field"><label>Email</label><input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="ravi@studio.com" required /></div>
-            <div className="rr-field"><label>Password</label><input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Min 6 chars" required /></div>
+            <div className="rr-field"><label>Phone</label><input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="+91 98765 43210" /></div>
           </div>
+          <div className="rr-field"><label>Password</label><input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Min 6 chars" required /></div>
           <button type="submit" className="rr-btn rr-btn-primary" disabled={loading} style={{ alignSelf: 'flex-start' }}>
             {loading ? <span className="rr-spinner" /> : '+ Register Creator'}
           </button>
@@ -837,7 +1028,10 @@ function CreatorsSection() {
               <div key={c.id} style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 'var(--r-lg)', padding: '12px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
                   <div style={{ fontWeight: 600, color: 'var(--text)' }}>{c.name}</div>
-                  <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 2 }}>{c.email}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 2 }}>
+                    {c.email}
+                    {c.phone && <span style={{ marginLeft: 8 }}>· 📞 {c.phone}</span>}
+                  </div>
                 </div>
                 <span className="rr-badge rr-badge-green">Creator</span>
               </div>
@@ -849,7 +1043,7 @@ function CreatorsSection() {
   );
 }
 
-// ─── MAIN DASHBOARD ──────────────────────────────────────────────────────────
+// ─── MAIN DASHBOARD ───────────────────────────────────────────────────────────
 export default function AdminDashboard() {
   const navigate = useNavigate();
   const user = getUser();
@@ -872,17 +1066,7 @@ export default function AdminDashboard() {
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex' }}>
-      {/* Sidebar */}
-      <aside style={{
-        width: sidebarWidth,
-        background: 'var(--surface)',
-        borderRight: '1px solid var(--border)',
-        display: 'flex', flexDirection: 'column',
-        position: 'fixed', top: 0, left: 0, bottom: 0,
-        transform: (!isMobile || sidebarOpen) ? 'translateX(0)' : 'translateX(-100%)',
-        transition: 'transform 0.25s',
-        zIndex: 100,
-      }}>
+      <aside style={{ width: sidebarWidth, background: 'var(--surface)', borderRight: '1px solid var(--border)', display: 'flex', flexDirection: 'column', position: 'fixed', top: 0, left: 0, bottom: 0, transform: (!isMobile || sidebarOpen) ? 'translateX(0)' : 'translateX(-100%)', transition: 'transform 0.25s', zIndex: 100 }}>
         <div style={{ padding: '20px 16px', borderBottom: '1px solid var(--border)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--accent-bg)', border: '1px solid rgba(108,99,255,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14 }}>🎬</div>
@@ -894,18 +1078,8 @@ export default function AdminDashboard() {
         </div>
         <nav style={{ flex: 1, padding: '12px 8px', display: 'flex', flexDirection: 'column', gap: 2 }}>
           {NAV.map(n => (
-            <button key={n.id}
-              onClick={() => { setActiveSection(n.id); setSidebarOpen(false); }}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 10,
-                padding: '9px 12px', borderRadius: 'var(--r-md)',
-                border: 'none', width: '100%', textAlign: 'left',
-                background: activeSection === n.id ? 'var(--accent-bg)' : 'transparent',
-                color: activeSection === n.id ? 'var(--accent2)' : 'var(--text2)',
-                fontWeight: activeSection === n.id ? 600 : 400,
-                fontSize: 13, cursor: 'pointer', transition: 'all 0.15s',
-              }}
-            >
+            <button key={n.id} onClick={() => { setActiveSection(n.id); setSidebarOpen(false); }}
+              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 'var(--r-md)', border: 'none', width: '100%', textAlign: 'left', background: activeSection === n.id ? 'var(--accent-bg)' : 'transparent', color: activeSection === n.id ? 'var(--accent2)' : 'var(--text2)', fontWeight: activeSection === n.id ? 600 : 400, fontSize: 13, cursor: 'pointer', transition: 'all 0.15s' }}>
               <span style={{ fontSize: 16 }}>{n.icon}</span>{n.label}
             </button>
           ))}
@@ -922,9 +1096,7 @@ export default function AdminDashboard() {
 
       <main style={{ flex: 1, marginLeft: isMobile ? 0 : sidebarWidth, minHeight: '100vh' }}>
         <div style={{ position: 'sticky', top: 0, zIndex: 50, background: 'var(--surface)', borderBottom: '1px solid var(--border)', padding: '0 20px', height: 56, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          {isMobile && (
-            <button className="rr-btn rr-btn-ghost rr-btn-sm" onClick={() => setSidebarOpen(true)}>☰</button>
-          )}
+          {isMobile && <button className="rr-btn rr-btn-ghost rr-btn-sm" onClick={() => setSidebarOpen(true)}>☰</button>}
           <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 15, color: 'var(--text)' }}>
             {NAV.find(n => n.id === activeSection)?.icon} {NAV.find(n => n.id === activeSection)?.label}
           </div>

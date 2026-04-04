@@ -48,7 +48,7 @@ export async function getAdminEvents() {
   return apiFetch('/admin/events');
 }
 
-// ─── Event Details (description, music, location) ────────────────────────────
+// ─── Event Details ────────────────────────────────────────────────────────────
 export async function updateEventDetails(eventId: string, data: {
   description?: string;
   musicPreferences?: string;
@@ -56,6 +56,26 @@ export async function updateEventDetails(eventId: string, data: {
   clientPoc?: { name: string; phone: string };
 }) {
   return apiFetch(`/event-details/${eventId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+}
+
+// ─── POC Management ───────────────────────────────────────────────────────────
+export async function updateEventPoc(eventId: string, data: { name: string; phone: string }) {
+  return apiFetch(`/admin/event/${eventId}/poc`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+}
+
+// ─── OTP Management ───────────────────────────────────────────────────────────
+export async function getEventOtpStatus(eventId: string) {
+  return apiFetch(`/admin/event/${eventId}/otp`);
+}
+
+export async function updateEventOtp(eventId: string, data: { startOtp: string; endOtp: string }) {
+  return apiFetch(`/admin/event/${eventId}/otp`, {
     method: 'PATCH',
     body: JSON.stringify(data),
   });
@@ -121,7 +141,7 @@ export async function deleteFile(id: string) {
   return apiFetch(`/admin/file/${id}`, { method: 'DELETE' });
 }
 
-// ─── Dashboard (for client detail view in admin) ─────────────────────────────
+// ─── Dashboard (client detail view in admin) ──────────────────────────────────
 export async function getClientDashboard(uniqueLinkId: string) {
   return apiFetch(`/p/${uniqueLinkId}`);
 }
