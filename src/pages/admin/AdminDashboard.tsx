@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { getUser, clearAuth } from '../../services/authService';
 import {
   createClient, createEvent, deleteEvent,
-  // addPayment, assignCreator, updateEventPoc,
-  addPayment, updateEventPoc,
+  addPayment, assignCreator, updateEventPoc,
+  // addPayment, updateEventPoc,
   uploadFile, getClients, getCreators, getAdminEvents,
   updateEventDetails, getClientDashboard,
   getEventOtpStatus, updateEventOtp,
@@ -850,18 +850,18 @@ function AssignSection({ events }: { events: AdminEvent[] }) {
   }, []);
 
   async function handleAssign(e: React.FormEvent) {
-    e.preventDefault();
-    if (!creatorId || !eventId) return setMsg({ text: 'Select both a creator and an event', type: 'error' });
-    setLoading(true); setMsg(null);
-    try {
-      // const result = await assignCreator(creatorId, eventId);
-      const creator = creators.find(c => c.id === creatorId);
-      const event = events.find(ev => ev.id === eventId);
-      setMsg({ text: `✓ ${creator?.name} assigned to "${event?.name}"! POC updated on client dashboard.`, type: 'success' });
-      setCreatorId(''); setEventId('');
-    } catch (err: any) { setMsg({ text: err.message, type: 'error' }); }
-    finally { setLoading(false); }
-  }
+  e.preventDefault();
+  if (!creatorId || !eventId) return setMsg({ text: 'Select both a creator and an event', type: 'error' });
+  setLoading(true); setMsg(null);
+  try {
+    await assignCreator(creatorId, eventId);  // ← uncomment this
+    const creator = creators.find(c => c.id === creatorId);
+    const event = events.find(ev => ev.id === eventId);
+    setMsg({ text: `✓ ${creator?.name} assigned to "${event?.name}"! POC updated on client dashboard.`, type: 'success' });
+    setCreatorId(''); setEventId('');
+  } catch (err: any) { setMsg({ text: err.message, type: 'error' }); }
+  finally { setLoading(false); }
+}
 
   const filteredCreators = creators.filter(c =>
     c.name.toLowerCase().includes(search.toLowerCase()) ||
