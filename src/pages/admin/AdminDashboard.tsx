@@ -215,10 +215,10 @@ function ClientsSection({ clients, setClients }: { clients: Client[]; setClients
   const [search, setSearch] = useState('');
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
 
-  const host = window.location.hostname === 'localhost'
-    ? 'http://localhost:8080'
-    : `https://${window.location.hostname.replace('admin.', '')}`;
-
+  // const host = window.location.hostname === 'localhost'
+  //   ? 'http://localhost:8080'
+  //   : `https://${window.location.hostname.replace('admin.', '')}`;
+const CLIENT_BASE = import.meta.env.VITE_CLIENT_BASE_URL || 'http://localhost:8080';
   useEffect(() => {
     getClients()
       .then(setClients)
@@ -267,7 +267,8 @@ function ClientsSection({ clients, setClients }: { clients: Client[]; setClients
         ) : filtered.length === 0 ? <EmptyState label={search ? 'No clients match your search' : 'No clients yet'} /> : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {filtered.map(c => {
-              const link = `${host}/p/${c.uniqueLinkId}`;
+              // const link = `${host}/p/${c.uniqueLinkId}`;
+              const link = `${CLIENT_BASE}/p/${c.uniqueLinkId}`;
               return (
                 <div key={c.id} style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 'var(--r-lg)', padding: '12px 14px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
